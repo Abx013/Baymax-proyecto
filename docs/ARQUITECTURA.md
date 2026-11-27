@@ -1,54 +1,99 @@
-# Arquitectura del proyecto Baymax
+# Arquitectura final · Baymax
 
-## Estructura del repositorio
+## 1. Unidad principal
 
-- `index.html`  
-  Panel web principal para GitHub Pages y modo demostración.
+El ESP32 controla la interfaz, sensores, audio y movimiento.
 
-- `esp32/Baymax_Expo.ino`  
-  Firmware base del ESP32 para la exposición.
+La alimentación se divide en dos:
+- **Power bank ADATA → USB-C del ESP32** para lógica, sensores y periféricos.
+- **4 AA → interruptor → VM del TB6612** para motores.
 
-- `docs/ARQUITECTURA.md`  
-  Este documento.
+Todas las tierras eléctricas necesarias comparten GND.
 
-## Flujo general
+## 2. Interfaz física
 
-1. **MLX90614** mide temperatura.
-2. **HX711 + 4 celdas de carga** obtiene el peso.
-3. **VL53L1X** mide la distancia desde el punto fijo superior hasta la cabeza y permite calcular altura.
-4. El **ESP32** procesa las lecturas.
-5. La web calcula y muestra el **IMC**.
-6. **HC-SR04** detecta obstáculos para movilidad.
-7. **TB6612FNG** controla los dos motores TT.
-8. **DFPlayer Mini + bocina** reproduce frases.
-9. **Buzzer** emite avisos cortos.
-10. **OLED** muestra información directamente en Baymax.
-11. Presión arterial y glucosa se registran como valores externos.
+OLED SSD1309 128x64 en el pecho.
 
-## Uso durante la exposición
+Tres pulsadores:
+- ▲ GPIO4
+- OK GPIO5
+- ▼ GPIO13
 
-El ESP32 crea una red propia:
+El menú físico ofrece temperatura, altura, IMC, distancia y estado.
 
+## 3. Sensores
+
+### MLX90614
+Comparte I2C:
+- SDA GPIO21
+- SCL GPIO22
+- dirección 0x5A
+
+### VL53L1X
+Sensor desmontable ubicado arriba del poste de altura:
+- SDA GPIO21
+- SCL GPIO22
+- dirección 0x29
+
+Cálculo:
+
+`altura de persona = altura fija del sensor - distancia ToF a la cabeza`
+
+### HC-SR04
+- TRIG GPIO18
+- ECHO GPIO19 mediante divisor 1 kΩ / 2 kΩ
+- detención automática a 20 cm o menos
+
+## 4. Peso e IMC
+
+Para la expo se descartó la construcción de la báscula con celdas de carga.
+
+Se usa una **báscula comercial externa**. El peso se captura:
+- desde el menú OLED con ▲/▼ y OK, o
+- desde el panel web del ESP32.
+
+El ESP32 combina el peso introducido con la última altura medida y calcula el IMC.
+
+## 5. Movimiento
+
+TB6612FNG:
+- PWMA 25
+- AIN1 26
+- AIN2 27
+- PWMB 33
+- BIN1 32
+- BIN2 14
+- STBY fijo a 3.3V
+
+El interruptor físico alimenta o corta VM. El movimiento se ordena desde el panel web.
+
+## 6. Audio
+
+### Buzzer pasivo
+GPIO17, controlado mediante LEDC.
+
+### DFPlayer Mini
+UART2:
+- ESP32 RX GPIO16 ← TX DFPlayer
+- ESP32 TX GPIO23 → resistencia 1 kΩ → RX DFPlayer
+
+## 7. Panel web
+
+El ESP32 crea:
 - SSID: `Baymax-Expo`
-- Contraseña: `BaymaxExpo2026`
-- Dirección local: `http://192.168.4.1`
+- contraseña: `BaymaxExpo2026`
+- página local: `http://192.168.4.1`
 
-Esto permite manejar Baymax sin depender del Wi-Fi escolar.
+Desde ahí se puede:
+- mover y detener el robot;
+- consultar lecturas;
+- medir temperatura;
+- medir altura;
+- introducir el peso de la báscula externa;
+- obtener el IMC.
 
-## Orden recomendado de integración
+## 8. Seguridad funcional
 
-1. ESP32
-2. OLED
-3. Botonera
-4. HC-SR04
-5. TB6612FNG + motores
-6. MLX90614
-7. VL53L1X
-8. HX711 + celdas
-9. Buzzer
-10. DFPlayer Mini
-11. Integración completa con web
-
-## Nota
-
-Los pines incluidos en el firmware son una **propuesta inicial**. Antes del cableado final deben verificarse contra la placa ESP32 exacta y contra los módulos físicos adquiridos.
+- El HC-SR04 frena el robot ante un obstáculo.
+- El ToF es desmontable: el poste no debe permanecer conectado mientras Baymax se desplaza.
+- Las mediciones son demostrativas y no diagnósticas.
